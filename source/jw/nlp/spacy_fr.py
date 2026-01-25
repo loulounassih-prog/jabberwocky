@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
+import os
 
 import spacy
 
@@ -30,7 +31,31 @@ class SpacyFrenchNLP:
         self.nlp = spacy.load(model)
 
     def parse(self, text: str) -> List[TokenInfo]:
+        # stabilise la tokenisation des incises (dit-elle…)
+        text = text.translate(
+            {
+                0x2010: 0x2D,  # hyphen
+                0x2011: 0x2D,  # non-breaking hyphen
+                0x2012: 0x2D,  # figure dash
+                0x2013: 0x2D,  # en dash
+                0x2014: 0x2D,  # em dash
+                0x2212: 0x2D,  # minus sign
+                0x00AD: 0x2D,  # soft hyphen
+                0xFE63: 0x2D,  # small hyphen-minus
+                0xFF0D: 0x2D,  # fullwidth hyphen-minus
+                0x2043: 0x2D,  # hyphen bullet
+            }
+        )
         doc = self.nlp(text)
+        debug = os.getenv("JW_DEBUG") == "1"
+        if debug:
+            for i, t in enumerate(doc):
+                if any(ord(ch) > 127 for ch in t.text):
+                    start = max(0, i - 2)
+                    end = min(len(doc), i + 3)
+                    ctx = [tok.text for tok in doc[start:end]]
+                    print(f"JW_DEBUG non-ascii context: {ctx}")
+                    print(f"JW_DEBUG non-ascii ords: {[ord(ch) for ch in t.text]}")
         out: List[TokenInfo] = []
 
         for t in doc:
