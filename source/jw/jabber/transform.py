@@ -8,7 +8,7 @@ import hashlib
 from jw.bank.sampler import BankSampler
 from jw.jabber.policy import ReplacementPolicy
 from jw.nlp.spacy_fr import SpacyFrenchNLP, TokenInfo
-from jw.text.surface import preserve_case, next_token_vowel_constraint
+from jw.text.surface import preserve_case, next_token_vowel_constraint, starts_with_vowel_letter
 
 
 @dataclass
@@ -23,12 +23,42 @@ def _get_number(tok: TokenInfo) -> str:
     if n in ("Sing", "Plur"):
         return n
     return "Sing"
+# Default to singular when number is missing or unsupported
 
 def _get_gender(tok: TokenInfo) -> str:
     g = tok.morph.get("Gender")
     if g == "Fem":
         return "Fem"
     return "Masc"
+# Default to masc when gender is missing or unsupported
+
+def _adjust_prev_ce(prev_tok: TokenInfo, next_tok: TokenInfo, next_out_text: str) -> str | None:
+    """
+    Adjust a previous "ce" before a vowel-initial output word:
+      - Fem -> "cette"
+      - Otherwise "cet"
+      - Return None when no adjustment needed
+    """
+
+    if prev_tok.pos != "DET": 
+        return None                 # "Ce" is a DET
+    
+    if not any(ch.isalpha() for ch in next_out_text):
+        return None                 # If the next word doesn't contain letters : punctuation, numbers...
+    
+    prev_norm = prev_tok.text.lower().replace("\u2019", "'")        # To treat the same way the ASCII and typo ' 
+    prev_lemma = prev_tok.lemma.lower().replace("\u2019", "'")
+    if prev_norm != "ce" and prev_lemma != "ce":
+        return None
+
+    if not starts_with_vowel_letter(next_out_text):
+        return None
+
+    gender = _get_gender(next_tok)
+    if gender == "Fem":
+        return preserve_case(prev_tok.text, "cette")
+    return preserve_case(prev_tok.text, "cet")
+
 
 
 # -----------------------------
@@ -51,7 +81,7 @@ _PP_ENDINGS_BY_ROOT = {
 
 _VOWELS = ("a", "e", "i", "o", "u", "y", "é", "è", "ê")
 
-def _looks_like_past_participle(w: str) -> bool:
+def _looks_like_past_participle(w: str) -> bool:            # First naïve way because bleu is treated as pp
     wl = w.lower()
     return any(wl.endswith(suf) for suf in _PAST_PP_ENDINGS)
 
@@ -60,11 +90,11 @@ def _append_ending(base: str, ending: str) -> str:
     if not base:
         return ending
     if base[-1].lower() in _VOWELS and ending[0].lower() in _VOWELS:
-        return base[:-1] + ending
+        return base[:-1] + ending                           # To remove collisions between vowels
     return base + ending
 
 
-def _to_past_participle(w: str, rng: random.Random, number: str, gender: str) -> str:
+def _to_past_participle(w: str, number: str, gender: str) -> str:
     """
     Very naive: if not already pp-like, append a common pp ending.
     We pick among ('é','i','u') deterministically for stable results.
@@ -73,9 +103,11 @@ def _to_past_participle(w: str, rng: random.Random, number: str, gender: str) ->
     if _looks_like_past_participle(wl):
         return w
 
-    stem = wl
-    digest = hashlib.md5(stem.encode("utf-8")).digest()
-    root = _PP_ROOTS[int.from_bytes(digest[:4], "big") % len(_PP_ROOTS)]
+    # Deterministically choose one participle-ending family ("é", "i", or "u") from the pseudo-verb stem.
+    digest = hashlib.md5(wl.encode("utf-8")).digest()$
+    root_index = int.from_bytes(digest[:4], "big") % len(_PP_ROOTS)
+    root = _PP_ROOTS[root_index]
+    
     ending = _PP_ENDINGS_BY_ROOT[root][gender][number]
     return _append_ending(w, ending)
 
@@ -85,11 +117,11 @@ def _guess_subject_number(tokens: list[TokenInfo], verb_index: int) -> str:
     Minimal subject number guess:
     Look left a few tokens for a likely subject (PRON or NOUN), ignoring punctuation/determiners.
     """
-    # Search window (small on purpose)
+    # Search a few tokens to the left for a likely subject.
     for j in range(verb_index - 1, max(-1, verb_index - 6), -1):
         t = tokens[j]
 
-        if t.pos in ("PUNCT", "DET", "ADP", "PART", "CCONJ", "SCONJ"):
+        if t.pos in ("PUNCT", "DET", "ADP", "PART", "CCONJ", "SCONJ"):  
             continue
 
         if t.pos == "PRON":
@@ -98,7 +130,6 @@ def _guess_subject_number(tokens: list[TokenInfo], verb_index: int) -> str:
                 return "Plur"
             if p in ("je", "j'", "tu", "il", "elle", "on"):
                 return "Sing"
-            # fallback
             return "Sing"
 
         if t.pos in ("NOUN", "PROPN"):
@@ -134,13 +165,10 @@ def _to_present_like(w: str, number: str) -> str:
     if number == "Plur":
         if wl.endswith("ent"):
             return w
-        # avoid "....eent"
         if wl.endswith("e"):
-            return w[:-1] + "ent"
+            return w[:-1] + "ent"               # avoid "....eent"
         return w + "ent"
 
-    # Sing
-    # If already looks like a 3p sg form, keep; else add 'e'
     if wl.endswith(("e", "s", "t", "é", "è", "ê")):
         return w
     return w + "e"
@@ -153,6 +181,7 @@ def jabberwockify(
     nlp: Optional[SpacyFrenchNLP] = None,
     seed: Optional[int] = None,
 ) -> TransformResult:
+
     rng = random.Random(seed)
     nlp = nlp or SpacyFrenchNLP()
 
@@ -162,59 +191,64 @@ def jabberwockify(
     replaced = 0
 
     avoid: set[str] = set()
+    prev_replaced = False
 
     for i, tok in enumerate(tokens):
+        replaced_this = False
+
         if not any(ch.isalpha() for ch in tok.text):
-            out_parts.append(tok.text + tok.whitespace)
-            continue
+            out_text = tok.text
         
-        if not policy.should_replace(tok, rng):
-            out_parts.append(tok.text + tok.whitespace)
-            continue
+        elif not policy.should_replace(tok, rng):
+            out_text = tok.text
+        
+        else:
+            prev_text = tokens[i - 1].text if i > 0 else ""
+            vowel_constraint = next_token_vowel_constraint(prev_text)
 
-        prev_text = tokens[i - 1].text if i > 0 else ""
-        vowel_constraint = next_token_vowel_constraint(prev_text)
-
-        # --- NOUN / ADJ ---
-        if tok.pos in ("NOUN", "ADJ"):
-            number = _get_number(tok)
-            repl = sampler.sample(tok.pos, number, vowel_constraint, rng, avoid=avoid)
-            repl = preserve_case(tok.text, repl)
-            out_parts.append(repl + tok.whitespace)
-            replaced += 1
-            avoid.add(repl.lower())
-            continue
-
-        # --- ADV ---
-        if tok.pos == "ADV":
-            repl = sampler.sample("ADV", None, None, rng, avoid=avoid)
-            repl = preserve_case(tok.text, repl)
-            out_parts.append(repl + tok.whitespace)
-            replaced += 1
-            avoid.add(repl.lower())
-            continue
-
-        # --- VERB (improved) ---
-        if tok.pos == "VERB":
-            base = sampler.sample("VERB", None, None, rng, avoid=avoid)
-
-            # If preceded by an AUX token, force a pseudo past participle
-            prev_pos = tokens[i - 1].pos if i > 0 else ""
-            if prev_pos == "AUX":
+            if tok.pos in ("NOUN", "ADJ"):
                 number = _get_number(tok)
-                gender = _get_gender(tok)
-                flexed = _to_past_participle(base, rng, number, gender)
+                repl = sampler.sample(tok.pos, number, vowel_constraint, rng, avoid=avoid)
+                out_text = preserve_case(tok.text, repl)
+                replaced_this = True
+                replaced += 1
+                avoid.add(repl.lower())
+
+            elif tok.pos == "ADV":
+                repl = sampler.sample("ADV", None, None, rng, avoid=avoid)
+                out_text = preserve_case(tok.text, repl)
+                replaced_this = True
+                replaced += 1
+                avoid.add(repl.lower())
+
+            elif tok.pos == "VERB":
+                base = sampler.sample("VERB", None, None, rng, avoid=avoid)
+
+                # If preceded by an AUX token, force a pseudo past participle
+                prev_pos = tokens[i - 1].pos if i > 0 else ""
+                if prev_pos == "AUX":
+                    number = _get_number(tok)
+                    gender = _get_gender(tok)
+                    flexed = _to_past_participle(base, number, gender)
+                else:
+                    subj_number = _guess_subject_number(tokens, i)  # Sing/Plur
+                    flexed = _to_present_like(base, subj_number)
+
+                out_text = preserve_case(tok.text, flexed)
+                replaced_this = True
+                replaced += 1
+                avoid.add(out_text.lower())
             else:
-                subj_number = _guess_subject_number(tokens, i)  # Sing/Plur
-                flexed = _to_present_like(base, subj_number)
+                # Rare fallback
+                out_text = tok.text
 
-            repl = preserve_case(tok.text, flexed)
-            out_parts.append(repl + tok.whitespace)
-            replaced += 1
-            avoid.add(repl.lower())
-            continue
+        if i > 0 and not prev_replaced:
+            prev_tok = tokens[i - 1]
+            adj = _adjust_prev_ce(prev_tok, tok, out_text)
+            if adj is not None and out_parts:
+                out_parts[-1] = adj + prev_tok.whitespace
 
-        # Rare fallback
-        out_parts.append(tok.text + tok.whitespace)
+        out_parts.append(out_text + tok.whitespace)
+        prev_replaced = replaced_this
 
     return TransformResult(text="".join(out_parts), replaced=replaced, total_tokens=len(tokens))

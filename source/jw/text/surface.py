@@ -45,17 +45,21 @@ def next_token_vowel_constraint(prev_token_text: str) -> bool | None:
     if not prev_token_text:
         return None
 
-    # Normalize minimal (lowercase)
-    p = prev_token_text.lower()
+    # Normalize minimal (lowercase + straight apostrophe)
+    p = prev_token_text.lower().replace("\u2019", "'")
 
-    # Elision: l' + vowel
-    if p in ("l'",):
+    # Elision: any token ending with apostrophe forces vowel start
+    if len(p) > 1 and p.endswith("'"):
         return True
 
-    # Determiners that should NOT be followed by a vowel-start word in French,
-    # because normally we would elide ("le ami" -> "l'ami", "la auto" -> "l'auto").
+    # Elidable full forms that should NOT be followed by a vowel-start word,
+    # because normally we would elide ("le ami" -> "l'ami", "je aime" -> "j'aime").
     # v1 heuristic: enforce consonant after these.
-    if p in ("le", "la", "un", "une"):
+    if p in (
+        "le", "la", "de", "je", "me", "te", "se", "que", "si", "ne",
+        "un", "une",
+        "lorsque", "puisque", "jusque", "quelque",
+    ):
         return False
 
     return None

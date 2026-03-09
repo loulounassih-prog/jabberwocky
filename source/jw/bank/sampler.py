@@ -1,41 +1,40 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
-
-
-def _starts_with_vowel_letter(word: str) -> bool:
-    # v1 heuristic (letters only). We'll improve later (h aspiré, etc.)
-    if not word:
-        return False
-    return word[0].lower() in "aeiouyàâäéèêëîïôöùûüÿœ"
+from random import Random
+from typing import Dict, List, Optional, Tuple
 
 
 @dataclass
 class BankSampler:
-    """
-    Minimal sampler on top of a dict bank.
-    Later, this will sit on top of a real JSONL bank + index.
-    """
+    
     bank: Dict[Tuple[str, Optional[str], Optional[str]], List[str]]
+    """Sample pseudowords from the bank based on POS, number, and onset constraints."""
 
     def sample(
         self,
         pos: str,
         number: Optional[str],
         needs_vowel_start: Optional[bool],
-        rng,
+        rng: Random,
         avoid: Optional[set[str]] = None,
     ) -> str:
-        avoid = avoid or set()
+        """
+        Return one pseudoword matching the requested grammatical constraints.
 
+        The sampler first selects the most specific bucket, then progressively
+        relaxes constraints if needed, and finally avoids recent repetitions
+        when possible.
+        """
+        if avoid is None :
+            avoid = set()
+        
         # Choose bucket key
         if pos in ("NOUN", "ADJ"):
             if number not in ("Sing", "Plur"):
                 number = "Sing"
 
             if needs_vowel_start is None:
-                # Try both buckets
                 candidates = (
                     self.bank.get((pos, number, "vowel"), [])
                     + self.bank.get((pos, number, "cons"), [])
@@ -46,11 +45,20 @@ class BankSampler:
 
         elif pos in ("VERB", "ADV"):
             candidates = self.bank.get((pos, None, None), [])
+
         else:
             candidates = []
 
-        # Fallback: if bucket empty, try any bucket for this POS
-        if not candidates and pos in ("NOUN", "ADJ"):
+        # Fallback: preserve constraints if possible
+        if not candidates and pos in ("NOUN", "ADJ") and needs_vowel_start is not None :
+            key3 = "vowel" if needs_vowel_start else "cons"
+            candidates = (
+                self.bank.get((pos, "Sing", key3),[])
+                + self.bank.get((pos, "Plur", key3), [])
+            )
+        
+        # ignore constraints
+        if not candidates and pos in ("NOUN","ADJ") :
             candidates = (
                 self.bank.get((pos, "Sing", "vowel"), [])
                 + self.bank.get((pos, "Sing", "cons"), [])
@@ -59,10 +67,10 @@ class BankSampler:
             )
 
         if not candidates:
-            # Last resort: return original POS placeholder
+            # Last resort: return a placeholder for missing POS bucket
             return f"<{pos}>"
 
-        # Filter avoid set (anti-repetition per document)
+        # Prefer unused candidates
         filtered = [w for w in candidates if w not in avoid]
         if not filtered:
             filtered = candidates
