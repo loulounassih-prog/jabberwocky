@@ -26,7 +26,7 @@ def preserve_case(src: str, repl: str) -> str:
 
     if src.isupper():
         return repl.upper()
-    if src[0].isupper() and src[1:].islower():
+    if src[0].isupper() and (len(src) == 1 or src[1:].islower()):
         if repl:
             return repl[0].upper() + repl[1:]
         return repl
@@ -54,10 +54,9 @@ def next_token_vowel_constraint(prev_token_text: str) -> bool | None:
 
     # Elidable full forms that should NOT be followed by a vowel-start word,
     # because normally we would elide ("le ami" -> "l'ami", "je aime" -> "j'aime").
-    # v1 heuristic: enforce consonant after these.
+    # Do NOT include "un"/"une": "un arbre" and "une amie" are valid.
     if p in (
-        "le", "la", "de", "je", "me", "te", "se", "que", "si", "ne",
-        "un", "une",
+        "le", "la", "de", "du", "au", "je", "me", "te", "se", "que", "si", "ne",
         "lorsque", "puisque", "jusque", "quelque",
     ):
         return False

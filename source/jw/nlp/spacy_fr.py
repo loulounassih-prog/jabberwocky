@@ -26,7 +26,7 @@ class SpacyFrenchNLP:
     Keeps the rest of the code independent from spaCy specifics.
     """
 
-    def __init__(self, model: str = "fr_core_news_sm") -> None:
+    def __init__(self, model: str = "fr_core_news_md") -> None:
         self.model_name = model
         self.nlp = spacy.load(model)
 

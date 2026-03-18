@@ -3,33 +3,22 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
-BankDict = Dict[Tuple[str, Optional[str], Optional[str]], List[str]]
 
 
-def load_bank_json(path: str | Path) -> BankDict
+def load_bank_json(path: str | Path) -> Dict[Tuple[str, Optional[str], Optional[str]], List[Tuple[str, str]]]:
     """
-    Load a Wuggy-generated bank from JSON and convert it to the sampler format.
+    Load a Wuggy-generated bank from JSON.
 
-    JSON format (from build_bank_fr.py):
-      bank[pos][number][initial] = list[str]
+    Each entry is a (form, gender) tuple.
+    For VERB and ADV the gender is always "_".
 
-    Sampler format:
-      (pos, number, initial) -> list[str]
+    JSON format:
+      bank[pos][number][initial] = list of [form, gender] or list of str (legacy)
     """
     path = Path(path)
+    raw = json.loads(path.read_text(encoding="utf-8"))
 
-    if not path.exist() :
-      raise FileNotFoundError(f"Bank file not found: {path}")
-    
-    if not path.is_file()
-      raise FileNotFoundError(f"Bank file is not a file: {path}")
-    
-    try :
-      raw = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc :
-       raise ValueError(f"Invalid bank JSON file: {path}") from exc
-
-    bank: BankDict = {}
+    bank: Dict[Tuple[str, Optional[str], Optional[str]], List[Tuple[str, str]]] = {}
 
     for pos, pos_block in raw.items():
         for number, number_block in pos_block.items():
@@ -39,6 +28,14 @@ def load_bank_json(path: str | Path) -> BankDict
                     None if number == "_" else number,
                     None if initial == "_" else initial,
                 )
-                bank[key] = [form for form in forms if form]
+                # Support both legacy str entries and new [form, gender] entries
+                entries: List[Tuple[str, str]] = []
+                for item in forms:
+                    if isinstance(item, list):
+                        entries.append((item[0], item[1]))
+                    else:
+                        legacy_gender = "_" if pos in ("VERB", "ADV") else "Masc"
+                        entries.append((str(item), legacy_gender))
+                bank[key] = entries
 
     return bank

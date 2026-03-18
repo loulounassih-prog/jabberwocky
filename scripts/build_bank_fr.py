@@ -25,6 +25,7 @@ SEEDS = {
 }
 
 N_PER_SEED = 50
+DEFAULT_MAX_FINAL_PER_POS = 0
 
 OUT_PATH = Path("data") / "bank_fr.json"
 
@@ -179,10 +180,10 @@ def _load_lexique_seeds(path: Path, limits: Dict[str, int]) -> Dict[str, List[st
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--lexique-tsv", type=str, default="")
-    p.add_argument("--n-noun", type=int, default=20000)
-    p.add_argument("--n-adj", type=int, default=10000)
-    p.add_argument("--n-adv", type=int, default=5000)
-    p.add_argument("--n-verb", type=int, default=10000)
+    p.add_argument("--n-noun", type=int, default=20)
+    p.add_argument("--n-adj", type=int, default=20)
+    p.add_argument("--n-adv", type=int, default=20)
+    p.add_argument("--n-verb", type=int, default=20)
     args = p.parse_args()
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -204,26 +205,43 @@ def main() -> None:
 
     # JSON-friendly structure:
     # bank[pos][number][initial] = list[str]
-    bank: Dict[str, Dict[str, Dict[str, List[str]]]] = {
+    bank: Dict[str, Dict[str, Dict[str, List[List[str]]]]] = {
         "NOUN": {"Sing": {"vowel": [], "cons": []}, "Plur": {"vowel": [], "cons": []}},
         "ADJ":  {"Sing": {"vowel": [], "cons": []}, "Plur": {"vowel": [], "cons": []}},
         "VERB": {"_": {"_": []}},  # flat
         "ADV":  {"_": {"_": []}},  # flat
     }
 
-    def add_bucket(pos: str, form: str) -> None:
+    def add_bucket(pos: str, form: str, gender: str = "Masc") -> None:
         form = form.strip()
         if not form:
             return
         if pos in ("VERB", "ADV"):
-            bank[pos]["_"]["_"].append(form)
+            bank[pos]["_"]["_"].append([form, "_"])
             return
 
         initial = "vowel" if starts_with_vowel_letter(form) else "cons"
-        bank[pos]["Sing"][initial].append(form)
-        bank[pos]["Plur"][initial].append(naive_plural(form))
+        bank[pos]["Sing"][initial].append([form, gender])
+        plur = naive_plural(form)
+        bank[pos]["Plur"][initial].append([plur, gender])
 
     avoid = {seed.casefold() for seeds in seeds_by_pos.values() for seed in seeds}
+
+    # Build a gender map from Lexique if available, else empty
+    seed_genders: Dict[str, str] = {}
+    if args.lexique_tsv:
+        with Path(args.lexique_tsv).open(encoding="utf-8-sig", newline="") as f:
+            reader = csv.DictReader(f, delimiter="\t")
+            for row in reader:
+                row_norm = _normalize_row(row)
+                ortho = _pick(row_norm, "ortho", "orth", "forme", "form")
+                genre = _pick(row_norm, "genre", "gender", "gen")
+                if ortho and genre:
+                    g = genre.strip().lower()
+                    if g in ("m", "mas", "masc", "masculin"):
+                        seed_genders[ortho.casefold()] = "Masc"
+                    elif g in ("f", "fem", "fém", "feminin", "féminin"):
+                        seed_genders[ortho.casefold()] = "Fem"
 
     for pos, seeds in seeds_by_pos.items():
         print(f"\n=== {pos} ===")
@@ -244,21 +262,25 @@ def main() -> None:
 
                 if pw.casefold() in avoid:
                     continue
-                add_bucket(pos, pw)
+                # Inherit gender from the seed word via Lexique when available.
+                # If Lexique gives nothing, default to Masc for now.
+                gender = seed_genders.get(seed.casefold(), "Masc")
+                add_bucket(pos, pw, gender)
                 count += 1
 
             print(f"  generated={count}")
 
     # Deduplicate while preserving order
-    def dedup(lst: List[str]) -> List[str]:
+    def dedup(lst: List[List[str]]) -> List[List[str]]:
         seen = set()
         out = []
-        for x in lst:
-            x_norm = x.casefold()
-            if x_norm in seen:
+        for entry in lst:
+            form = entry[0]
+            norm = form.casefold()
+            if norm in seen:
                 continue
-            seen.add(x_norm)
-            out.append(x)
+            seen.add(norm)
+            out.append(entry)
         return out
 
     for pos in bank:

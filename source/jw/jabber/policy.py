@@ -10,7 +10,7 @@ from jw.nlp.spacy_fr import TokenInfo
 # Words we keep
 DEFAULT_KEEP_POS: Set[str] = {
     "DET", "ADP", "PRON", "CCONJ", "SCONJ", "PART", "PUNCT", "SPACE",
-    "SYM", "X"
+    "SYM", "X", "NUM"
 }
 
 # Specific tokens we always keep (normalized lowercase)
@@ -22,7 +22,7 @@ DEFAULT_REPLACE_POS: Set[str] = {
 }
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=False)
 class ReplacementPolicy:
     """
     Simple policy:

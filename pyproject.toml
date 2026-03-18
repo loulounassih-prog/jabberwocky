@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=42"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jabberwocky"
+version = "0.1.0"
+description = "Generate syntactically plausible French nonsense text"
+requires-python = ">=3.10"
+dependencies = [
+    "spacy>=3.0",
+    "wuggy",
+    "fr-core-news-md @ https://github.com/explosion/spacy-models/releases/download/fr_core_news_md-3.7.0/fr_core_news_md-3.7.0-py3-none-any.whl",
+]
+
+[project.scripts]
+jabberwocky = "jw.cli:main"
+jabberwocky-build-bank = "jw.cli:build_bank"
+
+[tool.setuptools.packages.find]
+where = ["source"]

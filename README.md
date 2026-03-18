@@ -50,8 +50,8 @@ jabberwocky/
 ## Installation
 
 ```sh
-pip install wuggy spacy
-python -m spacy download fr_core_news_sm
+pip install -e .
+python -m spacy download fr_core_news_md
 ```
 
 > Requires **Python 3.10+**
@@ -148,31 +148,21 @@ Results are saved to `outputs/pseudowords_fr.txt`.
 
 - **Verb morphology is a heuristic patchwork.** Only the most common patterns (-er, -ir, -re) are handled. Irregular verbs (être, avoir, aller…) and compound tenses beyond passé composé are not covered.
 
-- **No gender agreement.** When a noun is replaced, no gender information propagates to surrounding adjectives or determiners. "Le grande flane" is phonotactically fine but grammatically off.
-
-- **Partial elision only.** `next_token_vowel_constraint` covers `le`, `la`, `l'`, `un`, `une` — but not `du`, `au`, liaison contexts, or *h aspiré*.
+- **Partial elision only.** `next_token_vowel_constraint` covers `le`, `la`, `l'`, `du`, `au` — but not liaison contexts or *h aspiré*.
 
 - **Modest bank size by default.** The hardcoded seed build produces ~300–440 pseudowords per POS. With high replacement rates on longer texts, repetition becomes noticeable. Use the Lexique build path to fix this.
 
-- **No adjective gender.** Adjectives are replaced respecting number but not gender. A feminine noun may end up with a masculine-looking pseudoword adjective.
-
-- **spaCy `fr_core_news_sm` accuracy.** On informal text, poetry, or old French, POS tagging and morphological analysis can be unreliable, and errors cascade.
-
-- **No `requirements.txt` or `pyproject.toml`.** Dependencies must be installed manually. The `jw` package also relies on a working directory convention rather than a proper install path.
+- **spaCy `fr_core_news_md` accuracy.** On informal text, poetry, or old French, POS tagging and morphological analysis can be unreliable, and errors cascade.
 
 ---
 
 ## Directions for improvement
 
-- **Add gender to the bank** — assign a probabilistic gender to each pseudoword at build time (inherited from its seed word), then propagate it to adjust surrounding determiners and adjective forms.
+- **Improve adjective gender in the bank** — currently gender is handled via surface heuristics (`_feminize_adj`). Assigning gender at build time and propagating it through the sampler would be more robust.
 
 - **Use a proper verb conjugator** — replace hand-rolled heuristics with a library like [mlconjug3](https://pypi.org/project/mlconjug3/) applied to pseudoword bases.
 
 - **Expand elision and liaison handling** — build a complete list of French elision triggers; check phonological onset rather than just the first letter.
-
-- **Package the project properly** — add a `pyproject.toml` with declared dependencies and a `pip install -e .` setup to eliminate fragile import path conventions.
-
-- **Add a test suite** — `mock_data.py` is already well-suited as a fixture. Priority targets: case preservation, verb conjugation heuristics, number agreement, policy logic.
 
 - **Support file I/O** — add `--input-file` and `--output-file` arguments for processing full documents.
 
@@ -217,8 +207,8 @@ Results are saved to `outputs/pseudowords_fr.txt`.
 
 | File | Role |
 |------|------|
-| `policy.py` | `ReplacementPolicy` frozen dataclass. Holds `pct_replace` and POS keep/replace sets. `should_replace(tok, rng)` encodes the full decision logic. |
-| `transform.py` | Core engine. `jabberwockify()` iterates over tokens, applies the policy, samples replacements, applies verb morphology heuristics (present tense or past participle by context), preserves casing, and reconstructs the string with original whitespace. |
+| `policy.py` | `ReplacementPolicy` dataclass. Holds `pct_replace` and POS keep/replace sets. `should_replace(tok, rng)` encodes the full decision logic.
+| `transform.py` | Core engine. `jabberwockify()` iterates over tokens, applies the policy, samples replacements, applies verb morphology heuristics (present, imperfect, future, conditional, gerund, and past participle by context), applies adjective feminization, handles contraction of `du`/`au` before vowel-initial pseudowords, and reconstructs the string with original whitespace.
 
 ### `source/jw/nlp/`
 
