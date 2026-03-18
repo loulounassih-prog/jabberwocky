@@ -1,13 +1,6 @@
 # 🐉 Jabberwocky
 
-> *"Le slithy toves did gyre and gimble in the wabe…"*
->
 > Generate French sentences that **look and feel syntactically correct** — but mean absolutely nothing.
-
-![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white)
-![spaCy](https://img.shields.io/badge/NLP-spaCy-09A3D5?style=flat-square)
-![Wuggy](https://img.shields.io/badge/Pseudowords-Wuggy-6A0DAD?style=flat-square)
-![License](https://img.shields.io/badge/License-MIT-22c55e?style=flat-square)
 
 ---
 
