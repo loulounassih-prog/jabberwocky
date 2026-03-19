@@ -105,6 +105,8 @@ Le dévreut pournent sur le canapé.
 (replaced=2/8, pct=0.6, seed=42)
 ```
 
+python scripts/jabberwocky_text.py --input-file test_input.txt --output-file test_output.txt --pct 0.6 --seed 42        
+
 **Available options:**
 
 | Option | Default | Description |
