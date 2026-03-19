@@ -18,6 +18,10 @@ class TransformResult:
     total_tokens: int
 
 
+# -----------------------------
+# Morphology utilities
+# -----------------------------
+
 def _get_number(tok: TokenInfo) -> str:
     # Default to singular when number is missing or unsupported
     n = tok.morph.get("Number")
@@ -32,6 +36,11 @@ def _get_gender(tok: TokenInfo) -> str:
     if g == "Fem":
         return "Fem"
     return "Masc"
+
+
+# -----------------------------
+# Determiner agreement
+# -----------------------------
 
 def _adjust_prev_ce(prev_tok: TokenInfo, next_tok: TokenInfo, next_out_text: str) -> str | None:
     """
@@ -143,6 +152,11 @@ def _find_left_det_index(tokens: list[TokenInfo], head_index: int) -> int | None
 
     return None
 
+
+# -----------------------------
+# Adjective feminization
+# -----------------------------
+
 def _find_governing_noun_gender(tokens: list[TokenInfo], adj_index: int) -> str | None:
     """
     Find the gender of the NOUN that governs the current ADJ.
@@ -169,6 +183,14 @@ def _find_governing_noun_gender(tokens: list[TokenInfo], adj_index: int) -> str 
 
     return None
 
+
+# -----------------------------
+# Contraction handling (du/au)
+# -----------------------------
+
+# Maps contracted determiners to their de-contracted forms before vowel-initial words.
+# "du arbre" is ungrammatical; it must become "de l'arbre".
+# "des" and "aux" are intentionally excluded: "des arbres" and "aux arbres" are correct as-is.
 _DECONTRACT: dict[str, str] = {
     "du": "de l'",
     "au": "à l'",
@@ -217,7 +239,8 @@ _PP_ENDINGS_BY_ROOT = {
 
 _VOWELS = ("a", "e", "i", "o", "u", "y", "é", "è", "ê")
 
-def _looks_like_past_participle(w: str) -> bool:            # First naïve way because bleu is treated as pp
+def _looks_like_past_participle(w: str) -> bool:
+    # Naive check — known false positive: "bleu" matches the "eu" suffix
     wl = w.lower()
     return any(wl.endswith(suf) for suf in _PAST_PP_ENDINGS)
 
@@ -226,7 +249,7 @@ def _append_ending(base: str, ending: str) -> str:
     if not base:
         return ending
     if base[-1].lower() in _VOWELS and ending[0].lower() in _VOWELS:
-        return base[:-1] + ending                           # To remove collisions between vowels
+        return base[:-1] + ending      # Drop trailing vowel to avoid vowel clusters
     return base + ending
 
 
@@ -253,7 +276,6 @@ def _guess_subject_number(tokens: list[TokenInfo], verb_index: int) -> str:
     Minimal subject number guess:
     Look left a few tokens for a likely subject (PRON or NOUN), ignoring punctuation/determiners.
     """
-    # Search a few tokens to the left for a likely subject.
     for j in range(verb_index - 1, max(-1, verb_index - 6), -1):
         t = tokens[j]
 
@@ -277,6 +299,7 @@ def _guess_subject_number(tokens: list[TokenInfo], verb_index: int) -> str:
 
     return "Sing"
 
+
 def _guess_tense_from_surface(tok: TokenInfo) -> str:
     """
     Fallback tense detection based on the surface form of the original verb,
@@ -292,6 +315,7 @@ def _guess_tense_from_surface(tok: TokenInfo) -> str:
     if w.endswith(("rai", "ras", "ra", "rons", "rez", "ront")):
         return "Fut"
     return "Pres"
+
 
 def _to_present_like(w: str, number: str) -> str:
     """
@@ -323,6 +347,7 @@ def _to_present_like(w: str, number: str) -> str:
     if wl.endswith(("e", "s", "t", "é", "è", "ê")):
         return w
     return w + "e"
+
 
 def _to_imperfect_like(w: str, number: str) -> str:
     """
@@ -383,6 +408,7 @@ def _to_gerund_like(w: str) -> str:
     else:
         stem = w
     return stem + "ant"
+
 
 def _feminize_adj(w: str) -> str:
     """

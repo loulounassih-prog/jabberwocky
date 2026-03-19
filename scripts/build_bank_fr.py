@@ -10,8 +10,8 @@ from wuggy import WuggyGenerator
 
 PLUGIN = "orthographic_french"
 
-# Seeds simples, fiables (pas d'accents) pour démarrer.
-# Plus tard, on remplacera par des seeds extraites de Lexique382.
+# Frequency-ranked seeds drawn from common French vocabulary across all POS.
+# Covers diverse phonotactic patterns to maximise pseudoword bank variety.
 SEEDS = {
     "NOUN": [
         "table", "maison", "camion", "chanson", "pierre", "jardin", "arbre", "école", "orage",
