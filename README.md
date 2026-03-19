@@ -142,15 +142,23 @@ Results are saved to `outputs/pseudowords_fr.txt`.
 
 - **Lexique integration.** `build_bank_fr.py` can ingest Lexique 3.83, rank seed words by frequency, and filter for lemma forms and singular inflections.
 
+- **Extended verb morphology.** The transform layer handles present, imperfect, future, conditional, gerund, and past participle forms, using surface heuristics to detect tense when spaCy's morphological analysis is ambiguous.
+
+- **Adjective gender agreement.** When a noun is replaced, its gender is propagated to surrounding adjectives via a feminization heuristic covering the most common French patterns (-al, -if, -eux, -el, -on, -et).
+
+- **Contraction handling.** `du` and `au` are automatically de-contracted to `de l'` and `à l'` when followed by a vowel-initial pseudoword.
+
 ---
 
 ## Limitations
 
-- **Verb morphology is a heuristic patchwork.** Only the most common patterns (-er, -ir, -re) are handled. Irregular verbs (être, avoir, aller…) and compound tenses beyond passé composé are not covered.
+- **Verb morphology is a heuristic patchwork.** Irregular verbs (être, avoir, aller…) and compound tenses beyond passé composé are not covered. A proper conjugation library compatible with Python 3.12+ would be more robust.
 
 - **Partial elision only.** `next_token_vowel_constraint` covers `le`, `la`, `l'`, `du`, `au` — but not liaison contexts or *h aspiré*.
 
 - **Modest bank size by default.** The hardcoded seed build produces ~300–440 pseudowords per POS. With high replacement rates on longer texts, repetition becomes noticeable. Use the Lexique build path to fix this.
+
+- **Adjective gender via surface heuristics.** Gender agreement for adjectives relies on suffix patterns rather than bank-level gender assignment. A feminine noun may still end up with an unconvincing pseudoword adjective if its suffix doesn't match any known pattern.
 
 - **spaCy `fr_core_news_md` accuracy.** On informal text, poetry, or old French, POS tagging and morphological analysis can be unreliable, and errors cascade.
 
@@ -158,15 +166,15 @@ Results are saved to `outputs/pseudowords_fr.txt`.
 
 ## Directions for improvement
 
-- **Improve adjective gender in the bank** — currently gender is handled via surface heuristics (`_feminize_adj`). Assigning gender at build time and propagating it through the sampler would be more robust.
+- **Improve adjective gender in the bank** — assign a gender to each pseudoword at build time (inherited from its seed word), then propagate it through the sampler to replace the current surface heuristic.
 
-- **Use a proper verb conjugator** — replace hand-rolled heuristics with a library like [mlconjug3](https://pypi.org/project/mlconjug3/) applied to pseudoword bases.
+- **Use a proper verb conjugator** — replace hand-rolled heuristics with a library like [mlconjug3](https://pypi.org/project/mlconjug3/) or [verbecc](https://pypi.org/project/verbecc/) applied to pseudoword bases, once Python 3.12 compatibility is available.
 
-- **Expand elision and liaison handling** — build a complete list of French elision triggers; check phonological onset rather than just the first letter.
+- **Expand elision and liaison handling** — build a complete list of French elision triggers; handle liaison contexts and *h aspiré* systematically.
 
-- **Support file I/O** — add `--input-file` and `--output-file` arguments for processing full documents.
+- **Support file I/O** — ✓ done. `--input-file` and `--output-file` arguments added to the CLI.
 
-- **Per-POS replacement rate** — allow independent `--pct-noun`, `--pct-verb`, etc. flags for finer control.
+- **Per-POS replacement rate** — ✓ done. `--pct-noun`, `--pct-verb`, `--pct-adj`, `--pct-adv` flags available for finer control.
 
 - **Phoneme-level bank** — Wuggy supports phonological plugins; a phoneme-level bank would match syllable count and stress patterns of the original word, which matters for psycholinguistics or TTS testing.
 
@@ -207,7 +215,7 @@ Results are saved to `outputs/pseudowords_fr.txt`.
 
 | File | Role |
 |------|------|
-| `policy.py` | `ReplacementPolicy` dataclass. Holds `pct_replace` and POS keep/replace sets. `should_replace(tok, rng)` encodes the full decision logic.
+| `policy.py` | `ReplacementPolicy` dataclass. Holds `pct_replace`, per-POS rates (`pct_by_pos`), and POS keep/replace sets. `should_replace(tok, rng)` encodes the full decision logic.
 | `transform.py` | Core engine. `jabberwockify()` iterates over tokens, applies the policy, samples replacements, applies verb morphology heuristics (present, imperfect, future, conditional, gerund, and past participle by context), applies adjective feminization, handles contraction of `du`/`au` before vowel-initial pseudowords, and reconstructs the string with original whitespace.
 
 ### `source/jw/nlp/`

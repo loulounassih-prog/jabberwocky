@@ -31,6 +31,7 @@ class ReplacementPolicy:
     """
 
     pct_replace: float = 0.6
+    pct_by_pos: dict = field(default_factory=dict)
 
     # Create per-instance copies of mutable default sets.
     keep_pos: Set[str] = field(default_factory=lambda : set(DEFAULT_KEEP_POS))
@@ -59,10 +60,12 @@ class ReplacementPolicy:
         if tok.pos not in self.replace_pos:
             return False
 
-        if self.pct_replace <= 0.0:
+        pct = self.pct_by_pos.get(tok.pos, self.pct_replace)
+
+        if pct <= 0.0:
             return False
-        if self.pct_replace >= 1.0:
+        if pct >= 1.0:
             return True
 
-        return rng.random() < self.pct_replace
+        return rng.random() < pct
     

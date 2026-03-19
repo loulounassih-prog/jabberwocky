@@ -485,7 +485,7 @@ def jabberwockify(
                 mood = tok.morph.get("Mood", "Ind")
 
                 if prev_pos == "AUX":
-                    # Passé composé: auxiliary + past participle
+                    # Past participle (passé composé)
                     gender = _get_gender(tok)
                     flexed = _to_past_participle(base, number, gender)
                 elif verbform == "Inf":
@@ -494,21 +494,19 @@ def jabberwockify(
                 elif verbform == "Part":
                     # Present participle / gerund
                     flexed = _to_gerund_like(base)
-                elif verbform == "Fin":
-                    subj_number = _guess_subject_number(tokens, i)
+                else:
+                    # Finite form — detect tense from surface
                     surface_tense = _guess_tense_from_surface(tok)
+                    mood_map = {"Cnd": "Cnd", "Imp": "Ind", "Fut": "Ind", "Pres": "Ind"}
+                    tense_map = {"Cnd": "Pres", "Imp": "Imp", "Fut": "Fut", "Pres": "Pres"}
+                    subj_number = _guess_subject_number(tokens, i)
+                    flexed = _to_present_like(base, subj_number)
                     if surface_tense == "Cnd":
                         flexed = _to_conditional_like(base, subj_number)
                     elif surface_tense == "Imp":
                         flexed = _to_imperfect_like(base, subj_number)
                     elif surface_tense == "Fut":
                         flexed = _to_future_like(base, subj_number)
-                    else:
-                        flexed = _to_present_like(base, subj_number)
-                else:
-                    # Default: present indicative
-                    subj_number = _guess_subject_number(tokens, i)
-                    flexed = _to_present_like(base, subj_number)
 
                 out_text = preserve_case(tok.text, flexed)
                 out_gender = None
