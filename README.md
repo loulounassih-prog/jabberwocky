@@ -1,7 +1,8 @@
 # 🐉 Jabberwocky
 
+> *"'Twas brillig, and the slithy toves did gyre and gimble in the wabe"* — Lewis Carroll, Jabberwocky (1871)
+>
 > Generate French sentences that **look and feel syntactically correct** — but mean absolutely nothing.
-
 ---
 
 ## What is this?
@@ -23,13 +24,16 @@ The pipeline runs in two stages:
 jabberwocky/
 ├── data/
 │   ├── Lexique383.tsv          # Optional: Lexique 3.83 frequency lexicon
-│   └── bank_fr.json            # Pre-built pseudoword bank
+│   └── bank_fr.json            # Pre-built French pseudoword bank
 ├── outputs/
 │   └── pseudowords_fr.txt      # Raw pseudowords from the demo script
 ├── scripts/
-│   ├── build_bank_fr.py        # Builds the pseudoword bank via Wuggy
+│   ├── build_bank_fr.py        # Builds the French pseudoword bank via Wuggy
+│   ├── build_bank_eng.py       # Builds the English pseudoword bank via Wuggy
 │   ├── demo_wuggy_fr.py        # Minimal demo: raw pseudoword generation
 │   └── jabberwocky_text.py     # Main CLI: transform a French text
+├── tests/
+│   └── test_jabberwocky.py     # Unit tests (pytest)
 └── source/
     └── jw/
         ├── bank/
@@ -41,8 +45,9 @@ jabberwocky/
         │   └── transform.py    # Core jabberwockify() function
         ├── nlp/
         │   └── spacy_fr.py     # spaCy wrapper → TokenInfo objects
-        └── text/
-            └── surface.py      # Case preservation, elision constraints
+        ├── text/
+        │   └── surface.py      # Case preservation, elision constraints
+        └── cli.py              # Entry points for pip-installed commands
 ```
 
 ---
@@ -94,9 +99,8 @@ python scripts/jabberwocky_text.py \
   --seed 42
 ```
 
-**Output:**
-```
-Le flane dort viteau sur le canapé.
+**Output example:**
+Le dévreut pournent sur le canapé.
 
 (replaced=2/8, pct=0.6, seed=42)
 ```
@@ -105,11 +109,17 @@ Le flane dort viteau sur le canapé.
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--text` | *(required)* | French input text to transform |
+| `--text` | *(required if no --input-file)* | French input text to transform |
+| `--input-file` | — | Path to a `.txt` file to transform |
+| `--output-file` | — | Path to write the output (default: print to stdout) |
 | `--pct` | `0.6` | Proportion of content words to replace (0.0 → 1.0) |
+| `--pct-noun` | — | Replacement rate for nouns (overrides --pct) |
+| `--pct-verb` | — | Replacement rate for verbs (overrides --pct) |
+| `--pct-adj` | — | Replacement rate for adjectives (overrides --pct) |
+| `--pct-adv` | — | Replacement rate for adverbs (overrides --pct) |
 | `--seed` | `0` | Random seed for reproducibility |
 | `--bank` | `data/bank_fr.json` | Path to the pseudoword bank |
-
+```
 ---
 
 ### Step 3 — (Optional) Inspect raw Wuggy output
@@ -156,7 +166,7 @@ Results are saved to `outputs/pseudowords_fr.txt`.
 
 - **Partial elision only.** `next_token_vowel_constraint` covers `le`, `la`, `l'`, `du`, `au` — but not liaison contexts or *h aspiré*.
 
-- **Modest bank size by default.** The hardcoded seed build produces ~300–440 pseudowords per POS. With high replacement rates on longer texts, repetition becomes noticeable. Use the Lexique build path to fix this.
+- **Modest bank size by default.** The hardcoded seed build produces ~1400 pseudowords per POS. With very high replacement rates on long texts, repetition may still become noticeable. Use the Lexique build path for even larger banks.
 
 - **Adjective gender via surface heuristics.** Gender agreement for adjectives relies on suffix patterns rather than bank-level gender assignment. A feminine noun may still end up with an unconvincing pseudoword adjective if its suffix doesn't match any known pattern.
 
@@ -172,10 +182,6 @@ Results are saved to `outputs/pseudowords_fr.txt`.
 
 - **Expand elision and liaison handling** — build a complete list of French elision triggers; handle liaison contexts and *h aspiré* systematically.
 
-- **Support file I/O** — ✓ done. `--input-file` and `--output-file` arguments added to the CLI.
-
-- **Per-POS replacement rate** — ✓ done. `--pct-noun`, `--pct-verb`, `--pct-adj`, `--pct-adv` flags available for finer control.
-
 - **Phoneme-level bank** — Wuggy supports phonological plugins; a phoneme-level bank would match syllable count and stress patterns of the original word, which matters for psycholinguistics or TTS testing.
 
 ---
@@ -189,6 +195,7 @@ Results are saved to `outputs/pseudowords_fr.txt`.
 | `demo_wuggy_fr.py` | Minimal standalone script. Loads the Wuggy French plugin, generates up to 100 pseudowords for 6 hardcoded seeds, saves the list to `outputs/pseudowords_fr.txt`. Useful to verify Wuggy is working. |
 | `build_bank_fr.py` | Main bank-building script. Accepts an optional Lexique 3.83 TSV; falls back to a small hardcoded seed list. Calls Wuggy per seed and POS, sorts results into buckets, deduplicates, and serialises to `data/bank_fr.json`. Also generates naive plural forms for nouns and adjectives. |
 | `jabberwocky_text.py` | Main CLI entry point. Parses arguments, loads the bank, wires up sampler + policy + transform, and prints the result with replacement statistics. |
+| `build_bank_eng.py` | English variant of the bank builder. Same structure as `build_bank_fr.py` but uses the Wuggy English orthographic plugin. Produces a `bank_en.json` for English Jabberwocky text. |
 
 ### `data/`
 
@@ -215,8 +222,8 @@ Results are saved to `outputs/pseudowords_fr.txt`.
 
 | File | Role |
 |------|------|
-| `policy.py` | `ReplacementPolicy` dataclass. Holds `pct_replace`, per-POS rates (`pct_by_pos`), and POS keep/replace sets. `should_replace(tok, rng)` encodes the full decision logic.
-| `transform.py` | Core engine. `jabberwockify()` iterates over tokens, applies the policy, samples replacements, applies verb morphology heuristics (present, imperfect, future, conditional, gerund, and past participle by context), applies adjective feminization, handles contraction of `du`/`au` before vowel-initial pseudowords, and reconstructs the string with original whitespace.
+| `policy.py` | `ReplacementPolicy` dataclass. Holds `pct_replace`, per-POS rates (`pct_by_pos`), and POS keep/replace sets. `should_replace(tok, rng)` encodes the full decision logic. |
+| `transform.py` | Core engine. `jabberwockify()` iterates over tokens, applies the policy, samples replacements, applies verb morphology heuristics (present, imperfect, future, conditional, gerund, and past participle by context), applies adjective feminization, handles contraction of `du`/`au` before vowel-initial pseudowords, and reconstructs the string with original whitespace. |
 
 ### `source/jw/nlp/`
 

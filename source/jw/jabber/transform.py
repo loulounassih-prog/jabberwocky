@@ -19,12 +19,15 @@ class TransformResult:
 
 
 def _get_number(tok: TokenInfo) -> str:
+    # Default to singular when number is missing or unsupported
     n = tok.morph.get("Number")
     if n in ("Sing", "Plur"):
         return n
     return "Sing"
 
+
 def _get_gender(tok: TokenInfo) -> str:
+    # Default to masculine when gender is missing or unsupported
     g = tok.morph.get("Gender")
     if g == "Fem":
         return "Fem"
@@ -42,9 +45,9 @@ def _adjust_prev_ce(prev_tok: TokenInfo, next_tok: TokenInfo, next_out_text: str
         return None                 # "Ce" is a DET
     
     if not any(ch.isalpha() for ch in next_out_text):
-        return None                 # If the next word doesn't contain letters : punctuation, numbers...
-    
-    prev_norm = prev_tok.text.lower().replace("\u2019", "'")        # To treat the same way the ASCII and typo ' 
+        return None                 # Skip punctuation and numbers
+
+    prev_norm = prev_tok.text.lower().replace("\u2019", "'")        # Normalize ASCII and typographic apostrophes
     prev_lemma = prev_tok.lemma.lower().replace("\u2019", "'")
     if prev_norm != "ce" and prev_lemma != "ce":
         return None
@@ -174,6 +177,10 @@ _DECONTRACT: dict[str, str] = {
     "DU": "DE L'",
     "AU": "À L'",
 }
+
+# -----------------------------
+# Contraction handling (du/au)
+# -----------------------------
 
 
 def _adjust_contraction(prev_tok: TokenInfo, out_text: str) -> str | None:
@@ -481,8 +488,6 @@ def jabberwockify(
                 prev_pos = tokens[i - 1].pos if i > 0 else ""
                 number = _get_number(tok)
                 verbform = tok.morph.get("VerbForm", "Fin")
-                tense = tok.morph.get("Tense", "Pres")
-                mood = tok.morph.get("Mood", "Ind")
 
                 if prev_pos == "AUX":
                     # Past participle (passé composé)

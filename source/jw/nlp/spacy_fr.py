@@ -31,7 +31,7 @@ class SpacyFrenchNLP:
         self.nlp = spacy.load(model)
 
     def parse(self, text: str) -> List[TokenInfo]:
-        # stabilise la tokenisation des incises (dit-elle…)
+        # Normalize typographic dashes to ASCII hyphens to stabilise tokenisation of French dialogue
         text = text.translate(
             {
                 0x2010: 0x2D,  # hyphen

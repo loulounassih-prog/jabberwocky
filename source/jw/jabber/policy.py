@@ -31,6 +31,8 @@ class ReplacementPolicy:
     """
 
     pct_replace: float = 0.6
+    # Per-POS override rates. Keys are spaCy POS tags (e.g. "NOUN", "VERB").
+    # If a POS is not in this dict, pct_replace is used as fallback.
     pct_by_pos: dict = field(default_factory=dict)
 
     # Create per-instance copies of mutable default sets.

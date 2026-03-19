@@ -6,3 +6,6 @@ __pycache__/
 dist/
 build/
 .venv/
+.pytest_cache/
+test_input.txt
+test_output.txt
